@@ -39,6 +39,29 @@ const createOrder = async (req, res) => {
       totalAmount += product.price * item.quantity;
     }
 
+    // Apply coupon if provided in request body
+    let discount = 0;
+    if (req.body.couponCode) {
+      const Coupon = require("../models/Coupon");
+      const coupon = await Coupon.findOne({ code: req.body.couponCode.toUpperCase(), isActive: true });
+      if (coupon) {
+        const notExpired = !coupon.expiresAt || new Date(coupon.expiresAt) >= new Date();
+        const metMinPurchase = totalAmount >= (coupon.minPurchase || 0);
+        if (notExpired && metMinPurchase) {
+          if (coupon.discountType === "percentage") {
+            discount = totalAmount * (coupon.discountAmount / 100);
+          } else {
+            discount = coupon.discountAmount;
+          }
+          if (discount > totalAmount) {
+            discount = totalAmount;
+          }
+        }
+      }
+    }
+
+    totalAmount = Math.max(0, totalAmount - discount);
+
     const order = await Order.create({
       user: req.user._id,
       items: resolvedItems,

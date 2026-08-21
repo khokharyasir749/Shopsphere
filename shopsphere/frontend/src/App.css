@@ -1571,3 +1571,36 @@ footer {
   opacity: 0.88;
   transform: translateY(-1px);
 }
+
+/* ===== COUPONS & PROMO CODES SYSTEM ===== */
+.promo-section {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-color);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem !important;
+}
+
+.promo-section input::placeholder {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.applied-coupon {
+  animation: fadeIn 0.3s ease;
+  box-shadow: 0 2px 8px rgba(74, 222, 128, 0.1);
+}
+
+.applied-coupon span {
+  font-weight: 500;
+}
+
+.applied-coupon button:hover {
+  color: #ef4444 !important;
+  transform: scale(1.1);
+}
+
+/* Admin coupons table styling overrides if needed */
+.admin-table tdFamily {
+  font-family: monospace;
+}

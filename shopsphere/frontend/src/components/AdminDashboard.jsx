@@ -9,6 +9,18 @@ export default function AdminDashboard({ user, showToast, onExit }) {
   const [loading, setLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
+  // Coupon State
+  const [coupons, setCoupons] = useState([]);
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
+  const [couponForm, setCouponForm] = useState({
+    code: "",
+    discountType: "percentage",
+    discountAmount: "",
+    minPurchase: "",
+    expiresAt: "",
+    isActive: true
+  });
+
   // Modals for products
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -83,12 +95,74 @@ export default function AdminDashboard({ user, showToast, onExit }) {
     } finally { setLoading(false); }
   };
 
+  const fetchCoupons = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/coupons", { headers: { Authorization: `Bearer ${getToken()}` } });
+      const data = await res.json();
+      if (res.ok) setCoupons(data);
+    } finally { setLoading(false); }
+  };
+
+  const handleCouponSubmit = async (e) => {
+    e.preventDefault();
+    if (!couponForm.code || !couponForm.discountAmount) {
+      showToast("Code and discount amount are required");
+      return;
+    }
+    try {
+      const res = await fetch("/api/coupons", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({
+          ...couponForm,
+          discountAmount: Number(couponForm.discountAmount),
+          minPurchase: Number(couponForm.minPurchase) || 0,
+          expiresAt: couponForm.expiresAt || null
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast("Coupon created successfully");
+        fetchCoupons();
+        setIsCouponModalOpen(false);
+        setCouponForm({ code: "", discountType: "percentage", discountAmount: "", minPurchase: "", expiresAt: "", isActive: true });
+      } else {
+        showToast(data.message || "Failed to create coupon");
+      }
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
+  const handleDeleteCoupon = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this coupon?")) return;
+    try {
+      const res = await fetch(`/api/coupons/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${getToken()}` }
+      });
+      if (res.ok) {
+        showToast("Coupon deleted successfully");
+        fetchCoupons();
+      } else {
+        showToast("Failed to delete coupon");
+      }
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
   useEffect(() => {
     if (user?.role === "admin") {
       fetchStats();
       if (activeTab === "products") fetchProducts();
       if (activeTab === "orders") fetchOrders();
       if (activeTab === "users") fetchUsers();
+      if (activeTab === "coupons") fetchCoupons();
     }
   }, [activeTab, user]);
 
@@ -183,6 +257,7 @@ export default function AdminDashboard({ user, showToast, onExit }) {
         <button className={activeTab === "products" ? "active" : ""} onClick={() => setActiveTab("products")}>Products</button>
         <button className={activeTab === "orders" ? "active" : ""} onClick={() => setActiveTab("orders")}>Orders</button>
         <button className={activeTab === "users" ? "active" : ""} onClick={() => setActiveTab("users")}>Users</button>
+        <button className={activeTab === "coupons" ? "active" : ""} onClick={() => setActiveTab("coupons")}>Coupons</button>
       </div>
 
       <div className="admin-content">
@@ -358,6 +433,56 @@ export default function AdminDashboard({ user, showToast, onExit }) {
             )}
           </div>
         )}
+
+        {activeTab === "coupons" && (
+          <div className="admin-panel-section">
+            <div style={{display: "flex", justifyContent: "space-between", marginBottom: "1rem"}}>
+              <h3>Coupons & Promo Codes</h3>
+              <button className="add-cart-btn" onClick={() => {
+                setCouponForm({ code: "", discountType: "percentage", discountAmount: "", minPurchase: "", expiresAt: "", isActive: true });
+                setIsCouponModalOpen(true);
+              }}>+ Add Coupon</button>
+            </div>
+            {loading ? <p>Loading...</p> : coupons.length === 0 ? (
+              <p style={{color: "var(--text-muted)", fontStyle: "italic"}}>No coupons found. Create one to get started!</p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Discount</th>
+                    <th>Min Spend</th>
+                    <th>Expires At</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {coupons.map(c => (
+                    <tr key={c._id}>
+                      <td style={{fontFamily: "monospace", fontWeight: "bold", color: "var(--accent-cyan)"}}>{c.code}</td>
+                      <td>{c.discountType === "percentage" ? `${c.discountAmount}%` : `$${c.discountAmount}`}</td>
+                      <td>${Number(c.minPurchase).toFixed(2)}</td>
+                      <td>{c.expiresAt ? new Date(c.expiresAt).toLocaleDateString() : "Never"}</td>
+                      <td>
+                        <span className="role-badge" style={{
+                          background: c.isActive ? "rgba(74, 222, 128, 0.1)" : "rgba(244, 63, 94, 0.1)",
+                          color: c.isActive ? "#4ade80" : "#f43f5e",
+                          border: c.isActive ? "1px solid rgba(74, 222, 128, 0.2)" : "1px solid rgba(244, 63, 94, 0.2)"
+                        }}>
+                          {c.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td>
+                        <button className="text-btn danger" onClick={() => handleDeleteCoupon(c._id)} style={{color: "#f87171"}}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {isProductModalOpen && (
@@ -390,6 +515,86 @@ export default function AdminDashboard({ user, showToast, onExit }) {
                 {productForm.image && <img src={productForm.image} alt="Preview" style={{marginTop: "0.5rem", maxWidth: "100px", borderRadius: "4px"}} />}
               </div>
               <button type="submit" className="submit-btn">{editingProduct ? "Save Changes" : "Create Product"}</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isCouponModalOpen && (
+        <div className="modal-backdrop" onClick={() => setIsCouponModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add New Coupon</h3>
+              <button className="close-btn" onClick={() => setIsCouponModalOpen(false)}>✕</button>
+            </div>
+            <form onSubmit={handleCouponSubmit} className="modal-body">
+              <div className="form-group">
+                <label>Coupon Code *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. SUMMER50"
+                  value={couponForm.code}
+                  onChange={e => setCouponForm({...couponForm, code: e.target.value.toUpperCase()})}
+                  style={{ textTransform: "uppercase" }}
+                />
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Discount Type *</label>
+                  <select
+                    value={couponForm.discountType}
+                    onChange={e => setCouponForm({...couponForm, discountType: e.target.value})}
+                  >
+                    <option value="percentage">Percentage (%)</option>
+                    <option value="fixed">Fixed Amount ($)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Discount Value *</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 15 or 10.00"
+                    value={couponForm.discountAmount}
+                    onChange={e => setCouponForm({...couponForm, discountAmount: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Min Spend ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="e.g. 50.00"
+                    value={couponForm.minPurchase}
+                    onChange={e => setCouponForm({...couponForm, minPurchase: e.target.value})}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Expiry Date</label>
+                  <input
+                    type="date"
+                    value={couponForm.expiresAt}
+                    onChange={e => setCouponForm({...couponForm, expiresAt: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className="form-group" style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  id="isActive"
+                  checked={couponForm.isActive}
+                  onChange={e => setCouponForm({...couponForm, isActive: e.target.checked})}
+                  style={{ width: "auto" }}
+                />
+                <label htmlFor="isActive" style={{ margin: 0, cursor: "pointer" }}>Is Coupon Active?</label>
+              </div>
+              <button type="submit" className="submit-btn" style={{ marginTop: "1rem" }}>Create Coupon</button>
             </form>
           </div>
         </div>

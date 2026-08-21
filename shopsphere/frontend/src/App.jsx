@@ -105,12 +105,13 @@ function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [reviewForm, setReviewForm] = useState({ rating: 0, comment: "", hovered: 0 });
 
-  // Checkout State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [shippingForm, setShippingForm] = useState({
     fullName: "", address: "", city: "", postalCode: "", country: ""
   });
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
 
   // New Product Form State
   const [newProduct, setNewProduct] = useState({
@@ -228,6 +229,13 @@ function App() {
     localStorage.setItem("shopsphere_wishlist", JSON.stringify(wishlist));
   }, [wishlist]);
 
+  useEffect(() => {
+    if (appliedCoupon && cartSubtotal < (appliedCoupon.minPurchase || 0)) {
+      setAppliedCoupon(null);
+      showToast("❌ Coupon removed: minimum spend not met");
+    }
+  }, [cartSubtotal, appliedCoupon]);
+
   const isInWishlist = (productId) => wishlist.some(p => p._id === productId);
 
   const toggleWishlist = (product) => {
@@ -243,6 +251,37 @@ function App() {
   const moveToCart = (product) => {
     addToCart(product);
     setWishlist(prev => prev.filter(p => p._id !== product._id));
+  };
+
+  const handleApplyCoupon = async (e) => {
+    if (e) e.preventDefault();
+    if (!couponCodeInput.trim()) return;
+
+    try {
+      const res = await fetch(`${API_URL}/api/coupons/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: couponCodeInput.trim().toUpperCase(),
+          subtotal: cartSubtotal
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAppliedCoupon(data);
+        showToast(`🎉 Coupon "${data.code}" applied successfully!`);
+        setCouponCodeInput("");
+      } else {
+        showToast(`❌ ${data.message || "Invalid coupon code"}`);
+      }
+    } catch (err) {
+      showToast("❌ Failed to apply coupon");
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    showToast("Coupon removed");
   };
 
   // Cart operations
@@ -297,6 +336,21 @@ function App() {
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+
+  let discountValue = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.discountType === "percentage") {
+      discountValue = cartSubtotal * (appliedCoupon.discountAmount / 100);
+    } else {
+      discountValue = appliedCoupon.discountAmount;
+    }
+    if (discountValue > cartSubtotal) {
+      discountValue = cartSubtotal;
+    }
+  }
+
+  const shippingFee = cartSubtotal >= 50 ? 0 : 4.99;
+  const finalTotal = Math.max(0, cartSubtotal - discountValue + shippingFee);
 
   // Add Product Submit
   const handleCreateProduct = async (e) => {
@@ -396,11 +450,13 @@ function App() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ items, shippingAddress: shippingForm })
+        body: JSON.stringify({ items, shippingAddress: shippingForm, couponCode: appliedCoupon?.code })
       });
       const data = await res.json();
       if (res.ok) {
         setCart([]);
+        setAppliedCoupon(null);
+        setCouponCodeInput("");
         setIsCheckoutOpen(false);
         setIsCartOpen(false);
         setShippingForm({ fullName: "", address: "", city: "", postalCode: "", country: "" });
@@ -684,17 +740,43 @@ function App() {
 
             {cart.length > 0 && (
               <div className="drawer-footer">
+                <div className="promo-section" style={{ marginBottom: "1rem" }}>
+                  {appliedCoupon ? (
+                    <div className="applied-coupon" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(74, 222, 128, 0.1)", border: "1px solid rgba(74, 222, 128, 0.25)", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", fontSize: "0.85rem" }}>
+                      <span>🎟️ <strong>{appliedCoupon.code}</strong> ({appliedCoupon.discountType === "percentage" ? `${appliedCoupon.discountAmount}%` : `$${appliedCoupon.discountAmount}`} off)</span>
+                      <button type="button" onClick={handleRemoveCoupon} style={{ background: "transparent", border: "none", color: "#f87171", cursor: "pointer", fontSize: "1rem", fontWeight: "bold" }}>✕</button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleApplyCoupon} style={{ display: "flex", gap: "0.5rem" }}>
+                      <input
+                        type="text"
+                        placeholder="Promo Code"
+                        value={couponCodeInput}
+                        onChange={(e) => setCouponCodeInput(e.target.value)}
+                        style={{ flex: 1, padding: "0.5rem 0.75rem", background: "var(--bg-input)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", color: "var(--text-main)", fontSize: "0.85rem", textTransform: "uppercase" }}
+                      />
+                      <button type="submit" className="add-cart-btn" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", marginTop: 0 }}>Apply</button>
+                    </form>
+                  )}
+                </div>
+
                 <div className="summary-row">
                   <span>Subtotal</span>
                   <span>${cartSubtotal.toFixed(2)}</span>
                 </div>
+                {discountValue > 0 && (
+                  <div className="summary-row" style={{ color: "#4ade80" }}>
+                    <span>Discount</span>
+                    <span>-${discountValue.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="summary-row">
                   <span>Estimated Shipping</span>
-                  <span>{cartSubtotal >= 50 ? "FREE" : "$4.99"}</span>
+                  <span>{shippingFee === 0 ? "FREE" : `$${shippingFee.toFixed(2)}`}</span>
                 </div>
                 <div className="summary-row total">
                   <span>Total</span>
-                  <span>${(cartSubtotal >= 50 ? cartSubtotal : cartSubtotal + 4.99).toFixed(2)}</span>
+                  <span>${finalTotal.toFixed(2)}</span>
                 </div>
 
                 <button className="checkout-btn" onClick={() => setIsCheckoutOpen(true)}>
@@ -781,13 +863,45 @@ function App() {
                 <label>Country *</label>
                 <input type="text" required placeholder="United States" value={shippingForm.country} onChange={e => setShippingForm({...shippingForm, country: e.target.value})} />
               </div>
+              <div className="promo-section" style={{ marginBottom: "1rem" }}>
+                {appliedCoupon ? (
+                  <div className="applied-coupon" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(74, 222, 128, 0.1)", border: "1px solid rgba(74, 222, 128, 0.25)", padding: "0.5rem 0.75rem", borderRadius: "var(--radius-md)", fontSize: "0.85rem" }}>
+                    <span>🎟️ <strong>{appliedCoupon.code}</strong> ({appliedCoupon.discountType === "percentage" ? `${appliedCoupon.discountAmount}%` : `$${appliedCoupon.discountAmount}`} off)</span>
+                    <button type="button" onClick={handleRemoveCoupon} style={{ background: "transparent", border: "none", color: "#f87171", cursor: "pointer", fontSize: "1rem", fontWeight: "bold" }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <input
+                      type="text"
+                      placeholder="Promo Code"
+                      value={couponCodeInput}
+                      onChange={(e) => setCouponCodeInput(e.target.value)}
+                      style={{ flex: 1, padding: "0.5rem 0.75rem", background: "var(--bg-input)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", color: "var(--text-main)", fontSize: "0.85rem", textTransform: "uppercase" }}
+                    />
+                    <button type="button" onClick={handleApplyCoupon} className="add-cart-btn" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem", marginTop: 0 }}>Apply</button>
+                  </div>
+                )}
+              </div>
+
               <div style={{background: "var(--bg-input)", borderRadius: "var(--radius-md)", padding: "0.75rem 1rem", marginBottom: "1rem", fontSize: "0.9rem"}}>
-                <div style={{display: "flex", justifyContent: "space-between", color: "var(--text-muted)"}}>
-                  <span>Cart Total</span><span>${cartSubtotal.toFixed(2)}</span>
+                <div style={{display: "flex", justifyContent: "space-between", color: "var(--text-muted)", marginBottom: "0.25rem"}}>
+                  <span>Subtotal</span><span>${cartSubtotal.toFixed(2)}</span>
+                </div>
+                {discountValue > 0 && (
+                  <div style={{display: "flex", justifyContent: "space-between", color: "#4ade80", marginBottom: "0.25rem"}}>
+                    <span>Discount</span><span>-${discountValue.toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{display: "flex", justifyContent: "space-between", color: "var(--text-muted)", marginBottom: "0.25rem"}}>
+                  <span>Shipping</span><span>{shippingFee === 0 ? "FREE" : `$${shippingFee.toFixed(2)}`}</span>
+                </div>
+                <div style={{display: "flex", justifyContent: "space-between", color: "var(--text-main)", fontWeight: "bold", borderTop: "1px solid var(--border-color)", paddingTop: "0.25rem", marginTop: "0.25rem"}}>
+                  <span>Total</span><span>${finalTotal.toFixed(2)}</span>
                 </div>
               </div>
+
               <button type="submit" className="submit-btn" disabled={checkoutLoading}>
-                {checkoutLoading ? "Placing Order..." : `🎉 Place Order - $${cartSubtotal.toFixed(2)}`}
+                {checkoutLoading ? "Placing Order..." : `🎉 Place Order - $${finalTotal.toFixed(2)}`}
               </button>
             </form>
           </div>

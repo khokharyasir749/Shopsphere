@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
+const couponRoutes = require("./routes/couponRoutes");
 const path = require("path");
 
 const app = express();
@@ -38,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/coupons", couponRoutes);
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
