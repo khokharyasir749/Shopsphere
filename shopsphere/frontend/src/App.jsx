@@ -94,6 +94,7 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
+  const [reviewForm, setReviewForm] = useState({ rating: 0, comment: "", hovered: 0 });
 
   // Checkout State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -310,6 +311,29 @@ function App() {
       setProducts((prev) => [createdLocally, ...prev]);
       showToast("✅ Product added to view catalog!");
       setIsAddModalOpen(false);
+    }
+  };
+
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!reviewForm.rating) return showToast("❌ Please select a star rating");
+    const token = localStorage.getItem("shopsphere_token");
+    try {
+      const res = await fetch(`${API_URL}/api/products/${selectedProduct._id}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ rating: reviewForm.rating, comment: reviewForm.comment })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedProduct(data);
+        setReviewForm({ rating: 0, comment: "", hovered: 0 });
+        showToast("✅ Review submitted! Thank you.");
+      } else {
+        showToast(`❌ ${data.message}`);
+      }
+    } catch (err) {
+      showToast("❌ Failed to submit review");
     }
   };
 
@@ -530,7 +554,15 @@ function App() {
                 </div>
 
                 <div className="card-body">
-                  <h3 onClick={() => { setSelectedProduct(product); setModalQuantity(1); }}>{product.name}</h3>
+                  <h3 onClick={() => { setSelectedProduct(product); setModalQuantity(1); setReviewForm({ rating: 0, comment: "", hovered: 0 }); }}>{product.name}</h3>
+                  {product.numReviews > 0 ? (
+                    <div className="card-stars">
+                      <span className="stars-display">{"★".repeat(Math.round(product.rating))}{"☆".repeat(5 - Math.round(product.rating))}</span>
+                      <span className="stars-label">{Number(product.rating).toFixed(1)} ({product.numReviews})</span>
+                    </div>
+                  ) : (
+                    <div className="card-stars"><span className="stars-empty">No reviews yet</span></div>
+                  )}
                   <p className="product-desc">{product.description}</p>
 
                   <div className="card-footer">
@@ -548,7 +580,7 @@ function App() {
                         {product.stock <= 0 ? "Out of Stock" : "+ Add to Cart"}
                       </button>
                     )}
-                    <button className="view-details-btn" style={{flex: 1, background: "rgba(255,255,255,0.05)", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "0.85rem"}} onClick={() => { setSelectedProduct(product); setModalQuantity(1); }}>
+                    <button className="view-details-btn" style={{flex: 1, background: "rgba(255,255,255,0.05)", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "0.85rem"}} onClick={() => { setSelectedProduct(product); setModalQuantity(1); setReviewForm({ rating: 0, comment: "", hovered: 0 }); }}>
                       View Details
                     </button>
                   </div>
@@ -808,7 +840,7 @@ function App() {
       {/* PRODUCT QUICK VIEW MODAL */}
       {selectedProduct && (
         <div className="modal-backdrop" onClick={() => setSelectedProduct(null)}>
-          <div className="modal-content" style={{ maxWidth: "680px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: "780px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{selectedProduct.name}</h3>
               <button className="close-btn" onClick={() => setSelectedProduct(null)}>✕</button>
@@ -827,6 +859,18 @@ function App() {
                     {selectedProduct.category}
                   </span>
                   <h2>{selectedProduct.name}</h2>
+                  <div className="modal-rating-summary">
+                    <span className="stars-display" style={{fontSize: "1.1rem"}}>
+                      {selectedProduct.numReviews > 0
+                        ? "★".repeat(Math.round(selectedProduct.rating)) + "☆".repeat(5 - Math.round(selectedProduct.rating))
+                        : "☆☆☆☆☆"}
+                    </span>
+                    <span style={{color: "var(--text-muted)", fontSize: "0.9rem", marginLeft: "0.5rem"}}>
+                      {selectedProduct.numReviews > 0
+                        ? `${Number(selectedProduct.rating).toFixed(1)} out of 5 (${selectedProduct.numReviews} review${selectedProduct.numReviews !== 1 ? "s" : ""})`
+                        : "No reviews yet"}
+                    </span>
+                  </div>
                   <div className="product-detail-price">${Number(selectedProduct.price).toFixed(2)}</div>
                   <p style={{fontSize: "0.95rem", color: "var(--text-muted)", marginBottom: "0.5rem"}}>
                     Stock Status: <span style={{color: selectedProduct.stock > 0 ? '#4ade80' : '#f87171', fontWeight: 600}}>{selectedProduct.stock > 0 ? `${selectedProduct.stock} Available` : 'Out of Stock'}</span>
@@ -862,6 +906,76 @@ function App() {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* REVIEWS SECTION */}
+              <div className="reviews-section">
+                <h4 className="reviews-title">Customer Reviews</h4>
+
+                {selectedProduct.reviews && selectedProduct.reviews.length > 0 ? (
+                  <div className="reviews-list">
+                    {[...selectedProduct.reviews].reverse().map((r, idx) => (
+                      <div key={idx} className="review-card">
+                        <div className="review-card-header">
+                          <div>
+                            <span className="review-author">{r.name}</span>
+                            <span className="review-date">{new Date(r.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <span className="review-stars">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+                        </div>
+                        {r.comment && <p className="review-comment">{r.comment}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{color: "var(--text-muted)", fontSize: "0.9rem", margin: "0.5rem 0 1.5rem"}}>No reviews yet. Be the first!</p>
+                )}
+
+                {/* REVIEW FORM */}
+                {user && user.role !== "admin" && (
+                  (() => {
+                    const hasReviewed = selectedProduct.reviews?.some(
+                      r => r.user === user._id || r.user?.toString() === user._id
+                    );
+                    return hasReviewed ? (
+                      <div className="already-reviewed-badge">✅ You have already reviewed this product</div>
+                    ) : (
+                      <form className="review-form" onSubmit={handleReviewSubmit}>
+                        <h5>Write a Review</h5>
+                        <div className="star-selector">
+                          {[1,2,3,4,5].map(star => (
+                            <button
+                              key={star}
+                              type="button"
+                              className={`star-btn ${star <= (reviewForm.hovered || reviewForm.rating) ? "active" : ""}`}
+                              onMouseEnter={() => setReviewForm(f => ({...f, hovered: star}))}
+                              onMouseLeave={() => setReviewForm(f => ({...f, hovered: 0}))}
+                              onClick={() => setReviewForm(f => ({...f, rating: star}))}
+                            >★</button>
+                          ))}
+                          {reviewForm.rating > 0 && (
+                            <span style={{fontSize: "0.85rem", color: "var(--text-muted)", marginLeft: "0.5rem"}}>
+                              {["Poor","Fair","Good","Very Good","Excellent"][reviewForm.rating - 1]}
+                            </span>
+                          )}
+                        </div>
+                        <textarea
+                          className="review-textarea"
+                          rows={3}
+                          placeholder="Share your thoughts about this product (optional)..."
+                          value={reviewForm.comment}
+                          onChange={e => setReviewForm(f => ({...f, comment: e.target.value}))}
+                        />
+                        <button type="submit" className="add-cart-btn" style={{marginTop: "0.75rem"}}>Submit Review</button>
+                      </form>
+                    );
+                  })()
+                )}
+                {!user && (
+                  <p style={{color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "1rem"}}>
+                    <span style={{color: "var(--primary)", cursor: "pointer", fontWeight: 600}} onClick={() => { setSelectedProduct(null); setIsAuthModalOpen(true); }}>Sign in</span> to leave a review.
+                  </p>
+                )}
               </div>
             </div>
           </div>

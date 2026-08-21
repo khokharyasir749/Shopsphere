@@ -6,8 +6,11 @@ const {
   createProduct,
   updateProduct,
   deleteProduct,
-  seedProducts
+  seedProducts,
+  createProductReview
 } = require("../controllers/productController");
+
+const { protect } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
@@ -17,5 +20,6 @@ router.post("/", createProduct);
 router.put("/:id", updateProduct);
 router.delete("/:id", deleteProduct);
 router.post("/seed", seedProducts);
+router.post("/:id/reviews", protect, createProductReview);
 
-module.exports = router;
+module.exports = router;
