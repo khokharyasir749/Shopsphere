@@ -93,6 +93,7 @@ function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
 
   // Checkout State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -692,7 +693,29 @@ function App() {
               </div>
               <div className="form-group">
                 <label>Password *</label>
-                <input type="password" required placeholder="••••••••" value={authForm.password} onChange={(e) => setAuthForm({...authForm, password: e.target.value})} />
+                <div style={{position: "relative"}}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    placeholder="••••••••"
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm({...authForm, password: e.target.value})}
+                    style={{paddingRight: "3rem"}}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(prev => !prev)}
+                    style={{
+                      position: "absolute", right: "0.75rem", top: "50%",
+                      transform: "translateY(-50%)", background: "transparent",
+                      border: "none", cursor: "pointer", fontSize: "1.1rem",
+                      color: "var(--text-muted)", lineHeight: 1, padding: 0
+                    }}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
               </div>
               <button type="submit" className="submit-btn" style={{marginTop: "1rem"}}>
                 {authMode === "login" ? "Sign In" : "Register"}
