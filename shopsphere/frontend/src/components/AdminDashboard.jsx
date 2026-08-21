@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function AdminDashboard({ user, showToast, onExit }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -26,13 +26,13 @@ export default function AdminDashboard({ user, showToast, onExit }) {
 
     setIsUploadingImage(true);
     try {
-      const res = await fetch("http://localhost:5000/api/upload", {
+      const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
       const data = await res.json();
       if (res.ok) {
-        setProductForm({ ...productForm, image: `http://localhost:5000${data.imagePath}` });
+        setProductForm({ ...productForm, image: `${data.imagePath}` });
         showToast("Image uploaded successfully");
       } else {
         showToast(data.message || "Failed to upload image");
@@ -189,7 +189,7 @@ export default function AdminDashboard({ user, showToast, onExit }) {
         {activeTab === "overview" && stats && (
           <div className="admin-metrics-grid">
             <div className="admin-metric-card">
-              <h4>Total Sales</h4>
+              <h4>Total Revenue</h4>
               <div className="value">${stats.totalSales.toFixed(2)}</div>
             </div>
             <div className="admin-metric-card">
@@ -214,7 +214,7 @@ export default function AdminDashboard({ user, showToast, onExit }) {
         {activeTab === "products" && (
           <div className="admin-panel-section">
             <div style={{display: "flex", justifyContent: "space-between", marginBottom: "1rem"}}>
-              <h3>Product Management</h3>
+              <h3>Inventory Management</h3>
               <button className="add-cart-btn" onClick={() => {
                 setEditingProduct(null);
                 setProductForm({ name: "", description: "", price: "", category: "Electronics", image: "", stock: 10 });
@@ -259,7 +259,7 @@ export default function AdminDashboard({ user, showToast, onExit }) {
 
         {activeTab === "orders" && (
           <div className="admin-panel-section">
-            <h3>Order Management</h3>
+            <h3>Orders Overview</h3>
             {loading ? <p>Loading...</p> : (
               <table className="admin-table">
                 <thead>
@@ -394,6 +394,21 @@ export default function AdminDashboard({ user, showToast, onExit }) {
           </div>
         </div>
       )}
+
+      <footer className="admin-footer">
+        <div className="admin-footer-left">
+          ShopSphere Admin Console &bull; v1.0.0
+          <span className="server-status">🟢 API Connected</span>
+        </div>
+        <div className="admin-footer-center">
+          <a href="#store" onClick={(e) => { e.preventDefault(); onExit(); }}>Storefront</a>
+          <a href="#docs" onClick={(e) => e.preventDefault()}>Documentation</a>
+          <a href="#support" onClick={(e) => e.preventDefault()}>Support</a>
+        </div>
+        <div className="admin-footer-right">
+          &copy; {new Date().getFullYear()} ShopSphere. Logged in as Administrator ({user.email})
+        </div>
+      </footer>
     </div>
   );
 }

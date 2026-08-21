@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import AdminDashboard from "./components/AdminDashboard";
+import UserDashboard from "./components/UserDashboard";
 import "./App.css";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 const CATEGORIES = ["All", "Electronics", "Fashion", "Home", "Accessories", "Sports"];
 
@@ -91,18 +94,6 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
 
-  // Profile Update State
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({
-    name: "", email: "", currentPassword: "", newPassword: "", confirmPassword: ""
-  });
-  const [profileLoading, setProfileLoading] = useState(false);
-
-  // Orders State
-  const [myOrders, setMyOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [expandedOrder, setExpandedOrder] = useState(null);
-
   // Checkout State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [shippingForm, setShippingForm] = useState({
@@ -131,7 +122,7 @@ function App() {
     window.scrollTo(0, 0);
     const token = localStorage.getItem("shopsphere_token");
     if (token) {
-      fetch("/api/auth/me", {
+      fetch(`${API_URL}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => res.json())
@@ -146,7 +137,7 @@ function App() {
     e.preventDefault();
     const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(authForm)
@@ -174,46 +165,10 @@ function App() {
     showToast("👋 Logged out successfully");
   };
 
-  const handleProfileUpdate = async (e) => {
-    e.preventDefault();
-    if (profileForm.newPassword && profileForm.newPassword !== profileForm.confirmPassword) {
-      return showToast("❌ New passwords do not match");
-    }
-    
-    setProfileLoading(true);
-    try {
-      const token = localStorage.getItem("shopsphere_token");
-      const res = await fetch("/api/auth/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          name: profileForm.name,
-          email: profileForm.email,
-          currentPassword: profileForm.currentPassword,
-          newPassword: profileForm.newPassword
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setUser(data);
-        localStorage.setItem("shopsphere_token", data.token);
-        setIsEditingProfile(false);
-        showToast("✅ Profile updated successfully!");
-        setProfileForm({...profileForm, currentPassword: "", newPassword: "", confirmPassword: ""});
-      } else {
-        showToast(`❌ ${data.message || "Failed to update profile"}`);
-      }
-    } catch (err) {
-      showToast("❌ Error updating profile");
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      let url = "/api/products";
+      let url = `${API_URL}/api/products`;
       const params = new URLSearchParams();
       if (selectedCategory !== "All") params.append("category", selectedCategory);
       if (searchQuery.trim()) params.append("search", searchQuery.trim());
@@ -253,10 +208,6 @@ function App() {
   useEffect(() => {
     fetchProducts();
   }, [selectedCategory, searchQuery]);
-
-  useEffect(() => {
-    if (showDashboard && user) fetchMyOrders();
-  }, [showDashboard]);
 
   useEffect(() => {
     localStorage.setItem("shopsphere_cart", JSON.stringify(cart));
@@ -324,7 +275,7 @@ function App() {
     }
 
     try {
-      const res = await fetch("/api/products", {
+      const res = await fetch(`${API_URL}/api/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newProduct)
@@ -361,26 +312,15 @@ function App() {
     }
   };
 
-  const fetchMyOrders = async () => {
-    const token = localStorage.getItem("shopsphere_token");
-    if (!token) return;
-    setOrdersLoading(true);
-    try {
-      const res = await fetch("/api/orders/my-orders", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok) setMyOrders(data);
-    } catch (err) {
-      console.error("Failed to fetch orders:", err.message);
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
   const handleCheckout = async (e) => {
     e.preventDefault();
     if (cart.length === 0) return;
+    if (user?.role === "admin") {
+      setIsCheckoutOpen(false);
+      setIsCartOpen(false);
+      showToast("Admins cannot place orders. Please use a customer account.");
+      return;
+    }
     const token = localStorage.getItem("shopsphere_token");
     if (!token) {
       setIsCheckoutOpen(false);
@@ -395,7 +335,7 @@ function App() {
         productId: item.product._id,
         quantity: item.quantity
       }));
-      const res = await fetch("/api/orders", {
+      const res = await fetch(`${API_URL}/api/orders`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -437,16 +377,23 @@ function App() {
         </div>
 
         <div className={`nav-links ${isMobileMenuOpen ? "open" : ""}`}>
-          <a href="#home" onClick={(e) => { e.preventDefault(); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); }}>Home</a>
-          <a href="#products" onClick={(e) => { e.preventDefault(); setSelectedCategory("All"); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); }}>Products</a>
-          <a href="#categories" onClick={(e) => { e.preventDefault(); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); }}>Categories</a>
+          <a href="#home" onClick={(e) => { e.preventDefault(); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); setTimeout(() => document.getElementById('home')?.scrollIntoView({ behavior: 'smooth' }), 100); }}>Home</a>
+          <a href="#categories" onClick={(e) => { e.preventDefault(); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); setTimeout(() => document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' }), 100); }}>Categories</a>
+          <a href="#products" onClick={(e) => { e.preventDefault(); setSelectedCategory("All"); setShowDashboard(false); setCurrentView("store"); setIsMobileMenuOpen(false); setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 100); }}>Products</a>
           <div className="search-nav-item">
             <span className="search-icon-nav">🔍</span>
             <input
               type="text"
               placeholder="Search..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowDashboard(false);
+                setCurrentView("store");
+                if (e.target.value) {
+                  setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 100);
+                }
+              }}
             />
           </div>
         </div>
@@ -468,110 +415,23 @@ function App() {
              <button className="add-product-btn" onClick={() => { setAuthMode("login"); setIsAuthModalOpen(true); }} style={{padding: "0.4rem 0.8rem"}}>Login</button>
           )}
 
-          <button className="cart-btn" onClick={() => setIsCartOpen(true)}>
-            <span>🛒</span> Cart
-            {totalCartCount > 0 && <span className="cart-badge">{totalCartCount}</span>}
-          </button>
+          {user?.role !== "admin" && (
+            <button className="cart-btn" onClick={() => setIsCartOpen(true)}>
+              <span>🛒</span> Cart
+              {totalCartCount > 0 && <span className="cart-badge">{totalCartCount}</span>}
+            </button>
+          )}
         </div>
       </nav>
 
       {currentView === "admin" ? (
         <AdminDashboard user={user} showToast={showToast} onExit={() => setCurrentView("store")} />
       ) : showDashboard && user ? (
-        <main className="dashboard-container">
-          <div className="dashboard-header">
-            <h2>My Dashboard</h2>
-            <button className="add-cart-btn" onClick={() => setShowDashboard(false)}>← Back to Shop</button>
-          </div>
-          <div className="dashboard-content">
-            <div className="profile-section">
-              <h3>Profile</h3>
-              {!isEditingProfile ? (
-                <div className="profile-card">
-                  <div className="profile-avatar">{user.name.charAt(0).toUpperCase()}</div>
-                  <div className="profile-info">
-                    <h4>{user.name}</h4>
-                    <p>{user.email}</p>
-                    <span className="role-badge">{user.role}</span>
-                  </div>
-                  <button className="text-btn" style={{marginTop: "1rem", color: "var(--accent-cyan)", display: "block"}} onClick={() => { setProfileForm({...profileForm, name: user.name, email: user.email}); setIsEditingProfile(true); }}>Edit Profile & Security</button>
-                </div>
-              ) : (
-                <div className="profile-card edit-mode" style={{width: "100%", maxWidth: "500px"}}>
-                  <h4>Edit Profile & Security</h4>
-                  <form onSubmit={handleProfileUpdate} style={{marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem"}}>
-                    <div className="form-group"><label>Name</label><input type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} required/></div>
-                    <div className="form-group"><label>Email</label><input type="email" value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})} required/></div>
-                    
-                    <div style={{borderTop: "1px solid rgba(255,255,255,0.05)", margin: "1rem 0", paddingTop: "1rem"}}>
-                      <h5 style={{marginBottom: "1rem", color: "var(--text-muted)", fontSize: "0.9rem"}}>Change Password (Optional)</h5>
-                      <div className="form-group"><label>Current Password</label><input type="password" value={profileForm.currentPassword} onChange={e => setProfileForm({...profileForm, currentPassword: e.target.value})} placeholder="Leave blank to keep current" /></div>
-                      <div className="form-group"><label>New Password</label><input type="password" value={profileForm.newPassword} onChange={e => setProfileForm({...profileForm, newPassword: e.target.value})} /></div>
-                      <div className="form-group"><label>Confirm New Password</label><input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} /></div>
-                    </div>
-                    
-                    <div style={{display: "flex", gap: "1rem", marginTop: "0.5rem"}}>
-                      <button type="submit" className="add-cart-btn" style={{flex: 1}} disabled={profileLoading}>{profileLoading ? "Saving..." : "Save Changes"}</button>
-                      <button type="button" className="view-details-btn" style={{flex: 1}} onClick={() => setIsEditingProfile(false)}>Cancel</button>
-                    </div>
-                  </form>
-                </div>
-              )}
-            </div>
-            <div className="orders-section">
-              <h3>Order History</h3>
-              {ordersLoading ? (
-                <div style={{padding: "2rem", textAlign: "center", color: "var(--text-muted)"}}>Loading orders...</div>
-              ) : myOrders.length === 0 ? (
-                <div className="empty-state" style={{margin: 0}}>
-                  <div className="empty-icon">📦</div>
-                  <h3>No orders yet</h3>
-                  <p>Start shopping and your orders will appear here.</p>
-                  <button className="add-cart-btn" onClick={() => setShowDashboard(false)}>Shop Now</button>
-                </div>
-              ) : (
-                <div className="orders-grid">
-                  {myOrders.map(order => (
-                    <div key={order._id} className="order-card">
-                      <div className="order-header">
-                        <span className="order-id">#{order._id.slice(-8).toUpperCase()}</span>
-                        <span className={`order-status ${order.status.toLowerCase()}`}>{order.status}</span>
-                      </div>
-                      <div className="order-details-text">
-                        <p>Date: {new Date(order.createdAt).toLocaleDateString()}</p>
-                        <p>Items: {order.items.reduce((s, i) => s + i.quantity, 0)}</p>
-                        <p className="order-total">Total: ${order.totalAmount.toFixed(2)}</p>
-                      </div>
-                      <button
-                        className="view-details-btn"
-                        onClick={() => setExpandedOrder(expandedOrder === order._id ? null : order._id)}
-                      >
-                        {expandedOrder === order._id ? "▲ Hide Details" : "▼ View Details"}
-                      </button>
-                      {expandedOrder === order._id && (
-                        <div className="order-expanded">
-                          <p style={{fontSize: "0.8rem", color: "var(--text-dim)", marginBottom: "0.5rem", marginTop: "0.75rem"}}>ITEMS</p>
-                          {order.items.map((item, idx) => (
-                            <div key={idx} className="order-item-row">
-                              <span>{item.name}</span>
-                              <span>x{item.quantity} &mdash; ${(item.price * item.quantity).toFixed(2)}</span>
-                            </div>
-                          ))}
-                          <p style={{fontSize: "0.8rem", color: "var(--text-dim)", marginBottom: "0.5rem", marginTop: "0.75rem"}}>SHIPPING TO</p>
-                          <p style={{fontSize: "0.85rem", color: "var(--text-muted)"}}>{order.shippingAddress.fullName}, {order.shippingAddress.address}, {order.shippingAddress.city}, {order.shippingAddress.postalCode}, {order.shippingAddress.country}</p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </main>
+        <UserDashboard user={user} setUser={setUser} showToast={showToast} onExit={() => setShowDashboard(false)} />
       ) : (
         <>
           {/* HERO SECTION */}
-          <section className="hero">
+          <section id="home" className="hero">
             <div className="hero-content">
           <div className="tagline-pill">
             <span>✨</span> Next-Gen E-Commerce Experience
@@ -602,7 +462,7 @@ function App() {
       </section>
 
       {/* SEARCH & FILTER SECTION */}
-      <div className="filter-section">
+      <div id="categories" className="filter-section">
         <div className="filter-bar">
           <div className="search-box">
             <span className="search-icon">🔍</span>
@@ -629,7 +489,7 @@ function App() {
       </div>
 
       {/* MAIN PRODUCTS DISPLAY */}
-      <main className="products-container">
+      <main id="products" className="products-container">
         <div className="section-header">
           <h2>
             {selectedCategory === "All" ? "Featured Products" : `${selectedCategory} Collection`}
@@ -677,14 +537,16 @@ function App() {
                     <span className="stock-info" style={{fontSize: "0.8rem", color: "var(--text-muted)"}}>Stock: {product.stock}</span>
                   </div>
                   <div className="card-actions" style={{marginTop: "0.75rem", display: "flex", gap: "0.5rem"}}>
-                    <button 
-                      className="add-cart-btn" 
-                      style={{flex: 1, opacity: product.stock <= 0 ? 0.5 : 1}} 
-                      onClick={() => addToCart(product)}
-                      disabled={product.stock <= 0}
-                    >
-                      {product.stock <= 0 ? "Out of Stock" : "+ Add to Cart"}
-                    </button>
+                    {user?.role !== "admin" && (
+                      <button 
+                        className="add-cart-btn" 
+                        style={{flex: 1, opacity: product.stock <= 0 ? 0.5 : 1}} 
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock <= 0}
+                      >
+                        {product.stock <= 0 ? "Out of Stock" : "+ Add to Cart"}
+                      </button>
+                    )}
                     <button className="view-details-btn" style={{flex: 1, background: "rgba(255,255,255,0.05)", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "0.85rem"}} onClick={() => { setSelectedProduct(product); setModalQuantity(1); }}>
                       View Details
                     </button>
@@ -950,28 +812,32 @@ function App() {
                     {selectedProduct.description}
                   </p>
 
-                  <div style={{display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1.5rem"}}>
-                    <span style={{fontSize: "0.9rem", color: "var(--text-muted)", fontWeight: 600}}>Quantity:</span>
-                    <div className="qty-controls" style={{background: "var(--bg-input)", padding: "0.25rem", borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)", marginTop: 0}}>
-                      <button type="button" className="qty-btn" onClick={() => setModalQuantity(Math.max(1, modalQuantity - 1))}>-</button>
-                      <span style={{width: "36px", textAlign: "center", fontWeight: 700}}>{modalQuantity}</span>
-                      <button type="button" className="qty-btn" onClick={() => setModalQuantity(Math.min(selectedProduct.stock, modalQuantity + 1))}>+</button>
-                    </div>
-                  </div>
+                  {user?.role !== "admin" && (
+                    <>
+                      <div style={{display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1.5rem"}}>
+                        <span style={{fontSize: "0.9rem", color: "var(--text-muted)", fontWeight: 600}}>Quantity:</span>
+                        <div className="qty-controls" style={{background: "var(--bg-input)", padding: "0.25rem", borderRadius: "var(--radius-md)", border: "1px solid var(--border-color)", marginTop: 0}}>
+                          <button type="button" className="qty-btn" onClick={() => setModalQuantity(Math.max(1, modalQuantity - 1))}>-</button>
+                          <span style={{width: "36px", textAlign: "center", fontWeight: 700}}>{modalQuantity}</span>
+                          <button type="button" className="qty-btn" onClick={() => setModalQuantity(Math.min(selectedProduct.stock, modalQuantity + 1))}>+</button>
+                        </div>
+                      </div>
 
-                  <button
-                    className="submit-btn"
-                    disabled={selectedProduct.stock === 0}
-                    style={{opacity: selectedProduct.stock === 0 ? 0.5 : 1, padding: "1rem", fontSize: "1.05rem"}}
-                    onClick={() => {
-                      if (selectedProduct.stock > 0) {
-                        addToCart(selectedProduct, modalQuantity);
-                        setSelectedProduct(null);
-                      }
-                    }}
-                  >
-                    {selectedProduct.stock > 0 ? `🛒 Add to Cart - $${(selectedProduct.price * modalQuantity).toFixed(2)}` : 'Out of Stock'}
-                  </button>
+                      <button
+                        className="submit-btn"
+                        disabled={selectedProduct.stock === 0}
+                        style={{opacity: selectedProduct.stock === 0 ? 0.5 : 1, padding: "1rem", fontSize: "1.05rem"}}
+                        onClick={() => {
+                          if (selectedProduct.stock > 0) {
+                            addToCart(selectedProduct, modalQuantity);
+                            setSelectedProduct(null);
+                          }
+                        }}
+                      >
+                        {selectedProduct.stock > 0 ? `🛒 Add to Cart - $${(selectedProduct.price * modalQuantity).toFixed(2)}` : 'Out of Stock'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

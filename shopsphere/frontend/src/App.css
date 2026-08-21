@@ -1250,3 +1250,36 @@ footer {
   z-index: 10;
   box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
+
+/* ADMIN FOOTER */
+.admin-footer {
+  margin-top: 2rem;
+  border-top: 1px solid var(--border-color);
+  padding: 1.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  background: rgba(10, 10, 10, 0.3);
+  backdrop-filter: blur(10px);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.admin-footer-center a {
+  color: var(--text-muted);
+  text-decoration: none;
+  margin: 0 1rem;
+  transition: color 0.2s ease;
+}
+
+.admin-footer-center a:hover {
+  color: var(--text-main);
+}
+
+.server-status {
+  margin-left: 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4ade80;
+}
