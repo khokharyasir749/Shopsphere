@@ -8,6 +8,8 @@ const productRoutes = require("./routes/productRoutes");
 const authRoutes = require("./routes/authRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -33,6 +35,9 @@ app.use("/api/products", productRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/upload", uploadRoutes);
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Global Error Handler
 app.use((err, req, res, next) => {

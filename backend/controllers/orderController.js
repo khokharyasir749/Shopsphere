@@ -46,6 +46,13 @@ const createOrder = async (req, res) => {
       totalAmount: parseFloat(totalAmount.toFixed(2)),
     });
 
+    // Decrement stock for each purchased item
+    for (const item of items) {
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { stock: -item.quantity }
+      });
+    }
+
     res.status(201).json(order);
   } catch (error) {
     res.status(500).json({ message: "Failed to create order", error: error.message });

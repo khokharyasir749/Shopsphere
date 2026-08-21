@@ -91,6 +91,13 @@ function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
 
+  // Profile Update State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: "", email: "", currentPassword: "", newPassword: "", confirmPassword: ""
+  });
+  const [profileLoading, setProfileLoading] = useState(false);
+
   // Orders State
   const [myOrders, setMyOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -165,6 +172,42 @@ function App() {
     setShowDashboard(false);
     setCurrentView("store");
     showToast("👋 Logged out successfully");
+  };
+
+  const handleProfileUpdate = async (e) => {
+    e.preventDefault();
+    if (profileForm.newPassword && profileForm.newPassword !== profileForm.confirmPassword) {
+      return showToast("❌ New passwords do not match");
+    }
+    
+    setProfileLoading(true);
+    try {
+      const token = localStorage.getItem("shopsphere_token");
+      const res = await fetch("/api/auth/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: profileForm.name,
+          email: profileForm.email,
+          currentPassword: profileForm.currentPassword,
+          newPassword: profileForm.newPassword
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setUser(data);
+        localStorage.setItem("shopsphere_token", data.token);
+        setIsEditingProfile(false);
+        showToast("✅ Profile updated successfully!");
+        setProfileForm({...profileForm, currentPassword: "", newPassword: "", confirmPassword: ""});
+      } else {
+        showToast(`❌ ${data.message || "Failed to update profile"}`);
+      }
+    } catch (err) {
+      showToast("❌ Error updating profile");
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   const fetchProducts = async () => {
@@ -443,14 +486,37 @@ function App() {
           <div className="dashboard-content">
             <div className="profile-section">
               <h3>Profile</h3>
-              <div className="profile-card">
-                <div className="profile-avatar">{user.name.charAt(0).toUpperCase()}</div>
-                <div className="profile-info">
-                  <h4>{user.name}</h4>
-                  <p>{user.email}</p>
-                  <span className="role-badge">{user.role}</span>
+              {!isEditingProfile ? (
+                <div className="profile-card">
+                  <div className="profile-avatar">{user.name.charAt(0).toUpperCase()}</div>
+                  <div className="profile-info">
+                    <h4>{user.name}</h4>
+                    <p>{user.email}</p>
+                    <span className="role-badge">{user.role}</span>
+                  </div>
+                  <button className="text-btn" style={{marginTop: "1rem", color: "var(--accent-cyan)", display: "block"}} onClick={() => { setProfileForm({...profileForm, name: user.name, email: user.email}); setIsEditingProfile(true); }}>Edit Profile & Security</button>
                 </div>
-              </div>
+              ) : (
+                <div className="profile-card edit-mode" style={{width: "100%", maxWidth: "500px"}}>
+                  <h4>Edit Profile & Security</h4>
+                  <form onSubmit={handleProfileUpdate} style={{marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem"}}>
+                    <div className="form-group"><label>Name</label><input type="text" value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} required/></div>
+                    <div className="form-group"><label>Email</label><input type="email" value={profileForm.email} onChange={e => setProfileForm({...profileForm, email: e.target.value})} required/></div>
+                    
+                    <div style={{borderTop: "1px solid rgba(255,255,255,0.05)", margin: "1rem 0", paddingTop: "1rem"}}>
+                      <h5 style={{marginBottom: "1rem", color: "var(--text-muted)", fontSize: "0.9rem"}}>Change Password (Optional)</h5>
+                      <div className="form-group"><label>Current Password</label><input type="password" value={profileForm.currentPassword} onChange={e => setProfileForm({...profileForm, currentPassword: e.target.value})} placeholder="Leave blank to keep current" /></div>
+                      <div className="form-group"><label>New Password</label><input type="password" value={profileForm.newPassword} onChange={e => setProfileForm({...profileForm, newPassword: e.target.value})} /></div>
+                      <div className="form-group"><label>Confirm New Password</label><input type="password" value={profileForm.confirmPassword} onChange={e => setProfileForm({...profileForm, confirmPassword: e.target.value})} /></div>
+                    </div>
+                    
+                    <div style={{display: "flex", gap: "1rem", marginTop: "0.5rem"}}>
+                      <button type="submit" className="add-cart-btn" style={{flex: 1}} disabled={profileLoading}>{profileLoading ? "Saving..." : "Save Changes"}</button>
+                      <button type="button" className="view-details-btn" style={{flex: 1}} onClick={() => setIsEditingProfile(false)}>Cancel</button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
             <div className="orders-section">
               <h3>Order History</h3>
@@ -598,6 +664,7 @@ function App() {
                     src={product.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80"}
                     alt={product.name}
                   />
+                  {product.stock <= 0 && <span className="out-of-stock-badge">Out of Stock</span>}
                   <span className="category-tag">{product.category}</span>
                 </div>
 
@@ -610,8 +677,13 @@ function App() {
                     <span className="stock-info" style={{fontSize: "0.8rem", color: "var(--text-muted)"}}>Stock: {product.stock}</span>
                   </div>
                   <div className="card-actions" style={{marginTop: "0.75rem", display: "flex", gap: "0.5rem"}}>
-                    <button className="add-cart-btn" style={{flex: 1}} onClick={() => addToCart(product)}>
-                      + Add to Cart
+                    <button 
+                      className="add-cart-btn" 
+                      style={{flex: 1, opacity: product.stock <= 0 ? 0.5 : 1}} 
+                      onClick={() => addToCart(product)}
+                      disabled={product.stock <= 0}
+                    >
+                      {product.stock <= 0 ? "Out of Stock" : "+ Add to Cart"}
                     </button>
                     <button className="view-details-btn" style={{flex: 1, background: "rgba(255,255,255,0.05)", color: "var(--text-main)", border: "1px solid var(--border-color)", borderRadius: "var(--radius-md)", fontWeight: 600, fontSize: "0.85rem"}} onClick={() => { setSelectedProduct(product); setModalQuantity(1); }}>
                       View Details
@@ -653,7 +725,14 @@ function App() {
                       <div className="qty-controls">
                         <button className="qty-btn" onClick={() => updateQuantity(item.product._id, -1)}>-</button>
                         <span>{item.quantity}</span>
-                        <button className="qty-btn" onClick={() => updateQuantity(item.product._id, 1)}>+</button>
+                        <button 
+                          className="qty-btn" 
+                          onClick={() => updateQuantity(item.product._id, 1)}
+                          disabled={item.quantity >= item.product.stock}
+                          style={{ opacity: item.quantity >= item.product.stock ? 0.5 : 1 }}
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                     <button className="remove-item-btn" onClick={() => removeFromCart(item.product._id)}>🗑️</button>
@@ -851,10 +930,13 @@ function App() {
             </div>
             <div className="modal-body">
               <div className="product-detail-layout">
-                <img
-                  src={selectedProduct.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80"}
-                  alt={selectedProduct.name}
-                />
+                <div style={{ position: "relative" }}>
+                  <img
+                    src={selectedProduct.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80"}
+                    alt={selectedProduct.name}
+                  />
+                  {selectedProduct.stock <= 0 && <span className="out-of-stock-badge">Out of Stock</span>}
+                </div>
                 <div className="product-detail-info">
                   <span className="category-tag" style={{ position: "static", display: "inline-block", marginBottom: "0.5rem" }}>
                     {selectedProduct.category}

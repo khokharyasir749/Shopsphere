@@ -15,6 +15,34 @@ export default function AdminDashboard({ user, showToast, onExit }) {
   const [productForm, setProductForm] = useState({
     name: "", description: "", price: "", category: "Electronics", image: "", stock: 10
   });
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    setIsUploadingImage(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setProductForm({ ...productForm, image: `http://localhost:5000${data.imagePath}` });
+        showToast("Image uploaded successfully");
+      } else {
+        showToast(data.message || "Failed to upload image");
+      }
+    } catch (err) {
+      showToast("Error uploading image");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const getToken = () => localStorage.getItem("shopsphere_token");
 
@@ -351,7 +379,16 @@ export default function AdminDashboard({ user, showToast, onExit }) {
                   <option value="Electronics">Electronics</option><option value="Fashion">Fashion</option><option value="Home">Home</option><option value="Accessories">Accessories</option><option value="Sports">Sports</option>
                 </select>
               </div>
-              <div className="form-group"><label>Image URL (optional)</label><input type="url" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} /></div>
+              <div className="form-group">
+                <label>Image Upload</label>
+                <input type="file" accept="image/png, image/jpeg, image/webp" onChange={handleImageUpload} disabled={isUploadingImage} />
+                {isUploadingImage && <small style={{color: "var(--accent-cyan)"}}>Uploading image...</small>}
+              </div>
+              <div className="form-group">
+                <label>Or Image URL (optional)</label>
+                <input type="url" value={productForm.image} onChange={e => setProductForm({...productForm, image: e.target.value})} />
+                {productForm.image && <img src={productForm.image} alt="Preview" style={{marginTop: "0.5rem", maxWidth: "100px", borderRadius: "4px"}} />}
+              </div>
               <button type="submit" className="submit-btn">{editingProduct ? "Save Changes" : "Create Product"}</button>
             </form>
           </div>
