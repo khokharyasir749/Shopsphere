@@ -79,8 +79,17 @@ function App() {
       return [];
     }
   });
+  const [wishlist, setWishlist] = useState(() => {
+    try {
+      const saved = localStorage.getItem("shopsphere_wishlist");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [modalQuantity, setModalQuantity] = useState(1);
@@ -214,6 +223,27 @@ function App() {
   useEffect(() => {
     localStorage.setItem("shopsphere_cart", JSON.stringify(cart));
   }, [cart]);
+
+  useEffect(() => {
+    localStorage.setItem("shopsphere_wishlist", JSON.stringify(wishlist));
+  }, [wishlist]);
+
+  const isInWishlist = (productId) => wishlist.some(p => p._id === productId);
+
+  const toggleWishlist = (product) => {
+    if (isInWishlist(product._id)) {
+      setWishlist(prev => prev.filter(p => p._id !== product._id));
+      showToast(`🤍 Removed "${product.name}" from wishlist`);
+    } else {
+      setWishlist(prev => [...prev, product]);
+      showToast(`❤️ Added "${product.name}" to wishlist!`);
+    }
+  };
+
+  const moveToCart = (product) => {
+    addToCart(product);
+    setWishlist(prev => prev.filter(p => p._id !== product._id));
+  };
 
   // Cart operations
   const addToCart = (product, requestedQty = 1) => {
@@ -441,6 +471,13 @@ function App() {
           )}
 
           {user?.role !== "admin" && (
+            <button className="cart-btn" onClick={() => setIsWishlistOpen(true)} style={{position: "relative"}}>
+              <span>♡</span> Wishlist
+              {wishlist.length > 0 && <span className="cart-badge" style={{background: "#e11d48"}}>{wishlist.length}</span>}
+            </button>
+          )}
+
+          {user?.role !== "admin" && (
             <button className="cart-btn" onClick={() => setIsCartOpen(true)}>
               <span>🛒</span> Cart
               {totalCartCount > 0 && <span className="cart-badge">{totalCartCount}</span>}
@@ -544,13 +581,22 @@ function App() {
           <div className="product-grid">
             {products.map((product) => (
               <div key={product._id} className="product-card">
-                <div className="card-image-wrap" onClick={() => { setSelectedProduct(product); setModalQuantity(1); }}>
+                <div className="card-image-wrap" onClick={() => { setSelectedProduct(product); setModalQuantity(1); setReviewForm({ rating: 0, comment: "", hovered: 0 }); }}>
                   <img
                     src={product.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80"}
                     alt={product.name}
                   />
                   {product.stock <= 0 && <span className="out-of-stock-badge">Out of Stock</span>}
                   <span className="category-tag">{product.category}</span>
+                  {user?.role !== "admin" && (
+                    <button
+                      className={`wishlist-heart-btn ${isInWishlist(product._id) ? "wishlisted" : ""}`}
+                      onClick={(e) => { e.stopPropagation(); toggleWishlist(product); }}
+                      aria-label={isInWishlist(product._id) ? "Remove from wishlist" : "Add to wishlist"}
+                    >
+                      {isInWishlist(product._id) ? "❤️" : "🤍"}
+                    </button>
+                  )}
                 </div>
 
                 <div className="card-body">
@@ -656,6 +702,50 @@ function App() {
                 </button>
               </div>
             )}
+          </div>
+        </>
+      )}
+      {/* WISHLIST DRAWER */}
+      {isWishlistOpen && (
+        <>
+          <div className="drawer-backdrop" onClick={() => setIsWishlistOpen(false)} />
+          <div className="cart-drawer wishlist-drawer">
+            <div className="drawer-header">
+              <h3>❤️ Wishlist ({wishlist.length})</h3>
+              <button className="close-btn" onClick={() => setIsWishlistOpen(false)}>✕</button>
+            </div>
+            <div className="drawer-body">
+              {wishlist.length === 0 ? (
+                <div className="empty-state" style={{ background: "transparent", border: "none" }}>
+                  <div className="empty-icon">🤍</div>
+                  <h3>Your wishlist is empty</h3>
+                  <p>Tap the heart on any product to save it here!</p>
+                  <button className="add-cart-btn" onClick={() => setIsWishlistOpen(false)}>Browse Products</button>
+                </div>
+              ) : (
+                wishlist.map((product) => (
+                  <div key={product._id} className="cart-item">
+                    <img src={product.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=100&auto=format&fit=crop&q=80"} alt={product.name} />
+                    <div className="cart-item-details">
+                      <div className="cart-item-title">{product.name}</div>
+                      <div className="cart-item-price">${Number(product.price).toFixed(2)}</div>
+                      <div style={{fontSize: "0.78rem", color: product.stock > 0 ? "#4ade80" : "#f87171", fontWeight: 600, marginTop: "0.2rem"}}>
+                        {product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}
+                      </div>
+                      <button
+                        className="wishlist-move-btn"
+                        disabled={product.stock <= 0}
+                        style={{opacity: product.stock <= 0 ? 0.5 : 1}}
+                        onClick={() => { moveToCart(product); if(wishlist.length <= 1) setIsWishlistOpen(false); }}
+                      >
+                        🛒 Move to Cart
+                      </button>
+                    </div>
+                    <button className="remove-item-btn" onClick={() => toggleWishlist(product)}>🗑️</button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </>
       )}
@@ -853,6 +943,15 @@ function App() {
                     alt={selectedProduct.name}
                   />
                   {selectedProduct.stock <= 0 && <span className="out-of-stock-badge">Out of Stock</span>}
+                  {user?.role !== "admin" && (
+                    <button
+                      className={`wishlist-heart-btn modal-heart ${isInWishlist(selectedProduct._id) ? "wishlisted" : ""}`}
+                      onClick={() => toggleWishlist(selectedProduct)}
+                      aria-label="Toggle wishlist"
+                    >
+                      {isInWishlist(selectedProduct._id) ? "❤️" : "🤍"}
+                    </button>
+                  )}
                 </div>
                 <div className="product-detail-info">
                   <span className="category-tag" style={{ position: "static", display: "inline-block", marginBottom: "0.5rem" }}>
