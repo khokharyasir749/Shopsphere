@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import AdminDashboard from "./components/AdminDashboard";
 import UserDashboard from "./components/UserDashboard";
 import "./App.css";
@@ -67,10 +67,14 @@ const DEFAULT_PRODUCTS = [
 // (No mock orders - real orders fetched from API)
 
 function App() {
+  const modalRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("featured");
+  const [maxSelectedPrice, setMaxSelectedPrice] = useState(null);
+  const [inStockOnly, setInStockOnly] = useState(false);
   const [cart, setCart] = useState(() => {
     try {
       const saved = localStorage.getItem("shopsphere_cart");
@@ -122,6 +126,9 @@ function App() {
     image: "",
     stock: 10
   });
+
+  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
 
   const showToast = (message) => {
     setToast(message);
@@ -181,37 +188,18 @@ function App() {
     setLoading(true);
     try {
       let url = `${API_URL}/api/products`;
-      const params = new URLSearchParams();
-      if (selectedCategory !== "All") params.append("category", selectedCategory);
-      if (searchQuery.trim()) params.append("search", searchQuery.trim());
-      if (params.toString()) url += `?${params.toString()}`;
-
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch products");
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
         setProducts(data);
-      } else if (!searchQuery && selectedCategory === "All") {
+      } else {
         // Fallback to default products if DB is completely empty
         setProducts(DEFAULT_PRODUCTS);
-      } else {
-        setProducts(data);
       }
     } catch (err) {
       console.warn("Using fallback local data due to network/API error:", err.message);
-      // Filter default products locally as fallback
-      let filtered = DEFAULT_PRODUCTS;
-      if (selectedCategory !== "All") {
-        filtered = filtered.filter((p) => p.category === selectedCategory);
-      }
-      if (searchQuery.trim()) {
-        filtered = filtered.filter(
-          (p) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            p.description.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-      setProducts(filtered);
+      setProducts(DEFAULT_PRODUCTS);
     } finally {
       setLoading(false);
     }
@@ -219,7 +207,7 @@ function App() {
 
   useEffect(() => {
     fetchProducts();
-  }, [selectedCategory, searchQuery]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("shopsphere_cart", JSON.stringify(cart));
@@ -334,8 +322,52 @@ function App() {
     showToast("Item removed from cart");
   };
 
-  const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const maxProductPrice = products.length > 0 ? Math.ceil(Math.max(...products.map(p => p.price))) : 1000;
+  const currentMaxPrice = maxSelectedPrice !== null ? maxSelectedPrice : maxProductPrice;
+
+  // Dynamic client-side filtering logic
+  const filteredProducts = products.filter(product => {
+    // 1. Search Query Filter (name & description)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const nameMatch = product.name?.toLowerCase().includes(query);
+      const descMatch = product.description?.toLowerCase().includes(query);
+      if (!nameMatch && !descMatch) return false;
+    }
+
+    // 2. Category Filter
+    if (selectedCategory !== "All") {
+      if (product.category !== selectedCategory) return false;
+    }
+
+    // 3. Price Filter
+    if (product.price > currentMaxPrice) return false;
+
+    // 4. Stock Filter
+    if (inStockOnly && product.stock <= 0) return false;
+
+    return true;
+  });
+
+  // Sorting logic (applied after filtering)
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    switch (sortBy) {
+      case "price-low-high":
+        return a.price - b.price;
+      case "price-high-low":
+        return b.price - a.price;
+      case "rating":
+        return (b.rating || 0) - (a.rating || 0);
+      case "newest":
+        if (a.createdAt && b.createdAt) {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        }
+        return 0; // Default for local seed products
+      case "featured":
+      default:
+        return 0; // Keep fetched order
+    }
+  });
 
   let discountValue = 0;
   if (appliedCoupon) {
@@ -413,6 +445,7 @@ function App() {
         setSelectedProduct(data);
         setReviewForm({ rating: 0, comment: "", hovered: 0 });
         showToast("✅ Review submitted! Thank you.");
+        fetchProducts();
       } else {
         showToast(`❌ ${data.message}`);
       }
@@ -461,6 +494,7 @@ function App() {
         setIsCartOpen(false);
         setShippingForm({ fullName: "", address: "", city: "", postalCode: "", country: "" });
         showToast(`🎉 Order placed! Total: $${data.totalAmount.toFixed(2)}`);
+        fetchProducts();
       } else {
         throw new Error(data.message || "Checkout failed");
       }
@@ -470,6 +504,31 @@ function App() {
       setCheckoutLoading(false);
     }
   };
+
+  const getRelatedProducts = (currentProduct) => {
+    if (!currentProduct) return [];
+    let related = products.filter(
+      (item) => item.category === currentProduct.category && item._id !== currentProduct._id
+    );
+    if (related.length < 3) {
+      const otherProducts = products
+        .filter((item) => item.category !== currentProduct.category && item._id !== currentProduct._id)
+        .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      related = [...related, ...otherProducts];
+    }
+    return related.slice(0, 4);
+  };
+
+  const handleRelatedClick = (product) => {
+    setSelectedProduct(product);
+    setModalQuantity(1);
+    setReviewForm({ rating: 0, comment: "", hovered: 0 });
+    if (modalRef.current) {
+      modalRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const relatedProducts = selectedProduct ? getRelatedProducts(selectedProduct) : [];
 
   return (
     <div className="app">
@@ -581,27 +640,89 @@ function App() {
 
       {/* SEARCH & FILTER SECTION */}
       <div id="categories" className="filter-section">
-        <div className="filter-bar">
-          <div className="search-box">
-            <span className="search-icon">🔍</span>
-            <input
-              type="text"
-              placeholder="Search products by name or description..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        <div className="filter-bar glassmorphic-toolbar">
+          <div className="filter-top-row">
+            <div className="search-box">
+              <span className="search-icon">🔍</span>
+              <input
+                type="text"
+                placeholder="Search products by name or description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="category-pills">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  className={`category-pill ${selectedCategory === cat ? "active" : ""}`}
+                  onClick={() => setSelectedCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="category-pills">
-            {CATEGORIES.map((cat) => (
+          <div className="filter-bottom-row">
+            <div className="price-slider-group">
+              <div className="slider-labels">
+                <span className="slider-title">Price Range</span>
+                <span className="slider-value">Up to: ${currentMaxPrice.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                className="price-slider"
+                min="0"
+                max={maxProductPrice}
+                value={currentMaxPrice}
+                onChange={(e) => setMaxSelectedPrice(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="filter-controls-actions">
+              <div className="sort-group">
+                <label htmlFor="sort-select" className="control-label">Sort By</label>
+                <select
+                  id="sort-select"
+                  className="sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="featured">Featured / Default</option>
+                  <option value="price-low-high">Price: Low to High</option>
+                  <option value="price-high-low">Price: High to Low</option>
+                  <option value="rating">Top Rated (Reviews)</option>
+                  <option value="newest">Newest Arrivals</option>
+                </select>
+              </div>
+
+              <div className="stock-group">
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={inStockOnly}
+                    onChange={(e) => setInStockOnly(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
+                <span className="stock-toggle-label">In Stock Only</span>
+              </div>
+
               <button
-                key={cat}
-                className={`category-pill ${selectedCategory === cat ? "active" : ""}`}
-                onClick={() => setSelectedCategory(cat)}
+                className="reset-filters-btn"
+                onClick={() => {
+                  setSelectedCategory("All");
+                  setSearchQuery("");
+                  setMaxSelectedPrice(null);
+                  setInStockOnly(false);
+                  setSortBy("featured");
+                }}
               >
-                {cat}
+                Reset Filters
               </button>
-            ))}
+            </div>
           </div>
         </div>
       </div>
@@ -612,7 +733,7 @@ function App() {
           <h2>
             {selectedCategory === "All" ? "Featured Products" : `${selectedCategory} Collection`}
           </h2>
-          <span className="product-count">{products.length} Items Available</span>
+          <span className="product-count">Showing {sortedProducts.length} of {products.length} products</span>
         </div>
 
         {loading ? (
@@ -621,21 +742,27 @@ function App() {
             <h3>Loading Collection...</h3>
             <p>Fetching the latest catalog items for you.</p>
           </div>
-        ) : products.length === 0 ? (
+        ) : sortedProducts.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">🔍</div>
             <h3>No Products Found</h3>
             <p>Try adjusting your search criteria or category filter.</p>
             <button
               className="add-cart-btn"
-              onClick={() => { setSelectedCategory("All"); setSearchQuery(""); }}
+              onClick={() => {
+                setSelectedCategory("All");
+                setSearchQuery("");
+                setMaxSelectedPrice(null);
+                setInStockOnly(false);
+                setSortBy("featured");
+              }}
             >
-              Reset Filters
+              Reset All Filters
             </button>
           </div>
         ) : (
           <div className="product-grid">
-            {products.map((product) => (
+            {sortedProducts.map((product) => (
               <div key={product._id} className="product-card">
                 <div className="card-image-wrap" onClick={() => { setSelectedProduct(product); setModalQuantity(1); setReviewForm({ rating: 0, comment: "", hovered: 0 }); }}>
                   <img
@@ -1044,7 +1171,7 @@ function App() {
       {/* PRODUCT QUICK VIEW MODAL */}
       {selectedProduct && (
         <div className="modal-backdrop" onClick={() => setSelectedProduct(null)}>
-          <div className="modal-content" style={{ maxWidth: "780px" }} onClick={(e) => e.stopPropagation()}>
+          <div ref={modalRef} className="modal-content" style={{ maxWidth: "780px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{selectedProduct.name}</h3>
               <button className="close-btn" onClick={() => setSelectedProduct(null)}>✕</button>
@@ -1190,6 +1317,43 @@ function App() {
                   </p>
                 )}
               </div>
+
+              {/* RELATED PRODUCTS SECTION */}
+              {relatedProducts.length > 0 && (
+                <div className="related-products-section">
+                  <h4 className="related-title">You May Also Like</h4>
+                  <div className="related-products-grid">
+                    {relatedProducts.map((p) => (
+                      <div
+                        key={p._id}
+                        className="related-product-card"
+                        onClick={() => handleRelatedClick(p)}
+                      >
+                        <div className="related-img-wrap">
+                          <img
+                            src={p.image || "https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=80"}
+                            alt={p.name}
+                          />
+                        </div>
+                        <div className="related-card-body">
+                          <h5 className="related-product-title" title={p.name}>
+                            {p.name}
+                          </h5>
+                          {p.numReviews > 0 ? (
+                            <div className="related-stars">
+                              <span className="related-stars-display">{"★".repeat(Math.round(p.rating))}{"☆".repeat(5 - Math.round(p.rating))}</span>
+                              <span className="related-stars-label">({p.numReviews})</span>
+                            </div>
+                          ) : (
+                            <div className="related-stars"><span className="related-stars-empty">No reviews</span></div>
+                          )}
+                          <div className="related-price">${Number(p.price).toFixed(2)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
